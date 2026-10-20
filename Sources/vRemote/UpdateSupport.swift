@@ -218,13 +218,13 @@ private final class UpdateWindowModel: ObservableObject {
 
     var automaticUpdates: Bool {
         get {
-            let defaults = UserDefaults.standard
+            let defaults = AppStorage.preferences
             guard defaults.object(forKey: Self.automaticUpdatesKey) != nil else { return true }
             return defaults.bool(forKey: Self.automaticUpdatesKey)
         }
         set {
             objectWillChange.send()
-            UserDefaults.standard.set(newValue, forKey: Self.automaticUpdatesKey)
+            AppStorage.preferences.set(newValue, forKey: Self.automaticUpdatesKey)
         }
     }
 

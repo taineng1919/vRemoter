@@ -14,6 +14,10 @@ enum LaunchAtLogin {
     }
 
     static func setEnabled(_ enabled: Bool) throws {
+        guard AppStorage.developmentDirectory == nil else {
+            throw NSError(domain: "vRemote.Development", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "独立测试版不修改登录启动项"])
+        }
         if enabled {
             try install()
         } else {

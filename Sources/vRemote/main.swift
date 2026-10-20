@@ -54,6 +54,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     )
     private let debugWindow = DebugWindowController()
     private let updateWindow = UpdateWindowController()
+#if DEBUG
+    private var developmentValidation: DevelopmentValidation?
+#endif
     private let x6BLE = BLEBridge(
         nameHint: "X6-Remote",
         savedUUIDFilename: "x6-uuid.txt",
@@ -307,6 +310,18 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         DispatchQueue.main.async { [weak self] in
             self?.debugWindow.show()
+#if DEBUG
+            if let root = AppStorage.developmentDirectory, let self {
+                self.developmentValidation = DevelopmentValidation(
+                    root: root,
+                    snapshot: { [weak self] in
+                        guard let self else { return "App exited" }
+                        return "googleBLE=\(self.chromecastBLEConnected) streaming=\(self.chromecastRemoteStreaming) session=\(self.x6Session.debugSnapshot) doubao=\(self.doubaoAudioState.snapshotNow())"
+                    },
+                    stop: { [weak self] in self?.stopMicrophoneNow() }
+                )
+            }
+#endif
         }
         if CommandLine.arguments.contains("--purchase-demo") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -748,6 +763,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+#if DEBUG
+        developmentValidation?.close()
+#endif
         recognitionTrigger.release()
         x6.stop()
         chromecastHID.stop()
@@ -768,6 +786,14 @@ if CommandLine.arguments.contains("--voice-session-self-test") {
 #endif
 
 let app = NSApplication.shared
+// Two Apps with the same identity must never race for the remote or Fn.
+if AppStorage.developmentDirectory != nil,
+   let identifier = Bundle.main.bundleIdentifier,
+   NSRunningApplication.runningApplications(withBundleIdentifier: identifier)
+    .contains(where: { $0.processIdentifier != getpid() && !$0.isTerminated }) {
+    fputs("Another vRemoter App is running. Quit it before development validation.\n", stderr)
+    exit(EXIT_FAILURE)
+}
 let delegate = AppController()
 app.delegate = delegate
 

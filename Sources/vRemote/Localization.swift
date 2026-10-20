@@ -9,13 +9,13 @@ enum AppLanguage: String, CaseIterable {
 
     static var selected: AppLanguage {
         get {
-            guard let raw = UserDefaults.standard.string(forKey: defaultsKey),
+            guard let raw = AppStorage.preferences.string(forKey: defaultsKey),
                   let language = AppLanguage(rawValue: raw) else {
                 return .system
             }
             return language
         }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: defaultsKey) }
+        set { AppStorage.preferences.set(newValue.rawValue, forKey: defaultsKey) }
     }
 
     var usesEnglish: Bool {

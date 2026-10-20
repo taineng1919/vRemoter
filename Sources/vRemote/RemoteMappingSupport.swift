@@ -248,7 +248,7 @@ final class RemoteMappingStore: ObservableObject {
     static let shared = RemoteMappingStore()
 
     @Published private(set) var revision = 0
-    private let defaults = UserDefaults.standard
+    private let defaults = AppStorage.preferences
     private let prefix = "remoteMapping."
     private let enabledPrefix = "remoteMappingEnabled."
     private let customPrefix = "remoteCustomMapping."

@@ -29,7 +29,7 @@ enum DonationPromptSchedule {
 
     static func shouldPresent(isHealthy: Bool, now: Date = Date()) -> Bool {
         guard isHealthy else { return false }
-        let defaults = UserDefaults.standard
+        let defaults = AppStorage.preferences
         let version = currentVersion
 
         if defaults.string(forKey: observedVersionKey) != version {
@@ -53,6 +53,6 @@ enum DonationPromptSchedule {
     }
 
     static func markHandled() {
-        UserDefaults.standard.set(currentVersion, forKey: handledVersionKey)
+        AppStorage.preferences.set(currentVersion, forKey: handledVersionKey)
     }
 }

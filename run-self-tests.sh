@@ -5,7 +5,7 @@ SCRIPT_DIR="${0:A:h}"
 OUTPUT="$SCRIPT_DIR/.build/vremote-self-test"
 
 mkdir -p "${OUTPUT:h}"
-swiftc \
+swiftc -module-cache-path "$SCRIPT_DIR/.build/module-cache" \
   "$SCRIPT_DIR/Sources/vRemote/ATVV/BridgeError.swift" \
   "$SCRIPT_DIR/Sources/vRemote/ATVV/ADPCMDecoder.swift" \
   "$SCRIPT_DIR/Sources/vRemote/ATVV/ATVVProtocol.swift" \

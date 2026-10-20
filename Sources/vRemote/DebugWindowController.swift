@@ -257,7 +257,7 @@ private final class ConsoleViewModel: ObservableObject {
     @Published var inputTriggerKey = AppStorage.inputTriggerKey
     @Published var functionHoldEnabled = AppStorage.functionHoldEnabled
     @Published var activeModal: ConsoleModal?
-    @Published var showX6MicHint = !UserDefaults.standard.bool(
+    @Published var showX6MicHint = !AppStorage.preferences.bool(
         forKey: "vRemoter.hasCompletedX6MicTest"
     )
 
@@ -406,7 +406,7 @@ private final class ConsoleViewModel: ObservableObject {
     func observeRemoteLevel(_ db: Double) {
         remoteLevelDB = db
         guard showX6MicHint, db > -100 else { return }
-        UserDefaults.standard.set(true, forKey: "vRemoter.hasCompletedX6MicTest")
+        AppStorage.preferences.set(true, forKey: "vRemoter.hasCompletedX6MicTest")
         showX6MicHint = false
     }
 

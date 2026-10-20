@@ -1,5 +1,5 @@
 import Foundation
-let root=URL(fileURLWithPath:FileManager.default.currentDirectoryPath).appendingPathComponent("Validation/Results/RecorderTests")
+let root=URL(fileURLWithPath:FileManager.default.currentDirectoryPath).appendingPathComponent(".local/tests/recordings")
 try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
 let wav=root.appendingPathComponent("replaced.wav")
 var recorder:WavRecorder?=WavRecorder(wavURL:wav,rawURL:root.appendingPathComponent("replaced.raw.bin"),basename:"replaced")
