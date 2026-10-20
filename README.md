@@ -1,5 +1,9 @@
 # vRemoter
 
+此 Fork 的 `feat/google-tv-9451-voice` 分支增加 Google TV Remote（`18D1:9451`）语音支持，并提供可选的豆包 Fn 按住式触发；保留 9450 与 X6 支持。本轮不增加 9451 HID 按键映射。
+
+[9451 开发与同步说明](docs/GOOGLE-TV-9451.md) · [实际验收结果](docs/ACCEPTANCE-9451.md) · [安装及回退方案](docs/INSTALL-9451.md)
+
 > 本仓库保存 vRemoter 的源码、设计源稿、构建脚本与测试。普通用户请通过 `vincentstudio.org` 系列域名访问官网、下载与更新服务。
 
 [官方网站](https://vremoter.vincentstudio.org/) · [下载最新版](https://updates.vincentstudio.org/vremoter/) · [v1.1.1 Release](https://github.com/VincentKingHsu/vRemoter/releases/tag/v1.1.1)

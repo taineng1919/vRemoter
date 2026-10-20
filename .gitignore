@@ -13,6 +13,7 @@ Driver/build/
 *.pcm
 *.raw
 *.raw.bin
+*.float32
 
 uuid.txt
 x6-uuid.txt

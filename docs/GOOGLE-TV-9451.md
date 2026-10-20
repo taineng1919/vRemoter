@@ -123,6 +123,18 @@ existing HAL driver and application preferences; a full PKG is unnecessary.
 tracks `upstream/main`; the feature branch tracks the fork after its first push.
 Do not push this work to either main or open upstream issues/PRs automatically.
 
+For a fresh clone, use the fork and configure the original repository explicitly:
+
+```sh
+git clone https://github.com/taineng1919/vRemoter.git
+cd vRemoter
+git remote add upstream https://github.com/VincentKingHsu/vRemoter.git
+git fetch upstream
+git branch --set-upstream-to=upstream/main main
+git switch --track origin/feat/google-tv-9451-voice
+git config pull.ff only
+```
+
 ```sh
 git status --short                 # commit or stash your changes first
 git fetch upstream
