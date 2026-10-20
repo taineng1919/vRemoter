@@ -22,29 +22,54 @@ codesign -v -R '=identifier "local.simaqingfeng.vRemote"' "$SOURCE"
 mkdir -p .local/backups
 BACKUP=$(mktemp -d "$PWD/.local/backups/$(date +%Y%m%d-%H%M%S).XXXXXX")
 # A verified copy exists before anything in /Applications is renamed.
-ditto "$TARGET" "$BACKUP/vRemote.app"
+NEEDS_ADMIN_READ=0
+for resource_file in "$TARGET"/**/*(DN.); do
+  if [[ ! -r "$resource_file" ]]; then NEEDS_ADMIN_READ=1; break; fi
+done
+if (( NEEDS_ADMIN_READ )); then
+  print 'macOS administrator authorization is needed to back up root-only App resources.'
+  # Elevate only the copy, then give the user ownership of their backup.
+  # Never chmod/chown the installed source. quoted form protects all paths.
+  /usr/bin/osascript - "$TARGET" "$BACKUP/vRemote.app" "$(id -u)" "$(id -g)" <<'APPLESCRIPT'
+on run argv
+    set sourcePath to item 1 of argv
+    set backupPath to item 2 of argv
+    set ownerID to (item 3 of argv) & ":" & (item 4 of argv)
+    set copyCommand to "/usr/bin/ditto " & quoted form of sourcePath & " " & quoted form of backupPath
+    set copyCommand to copyCommand & " && /usr/sbin/chown -R " & quoted form of ownerID & " " & quoted form of backupPath
+    do shell script copyCommand with administrator privileges
+end run
+APPLESCRIPT
+else
+  ditto "$TARGET" "$BACKUP/vRemote.app"
+fi
 codesign --verify --deep --strict "$BACKUP/vRemote.app"
 cmp "$TARGET/Contents/MacOS/vRemote" "$BACKUP/vRemote.app/Contents/MacOS/vRemote"
 PREFS="$HOME/Library/Preferences/local.simaqingfeng.vRemote.plist"
 [[ ! -f "$PREFS" ]] || cp -p "$PREFS" "$BACKUP/Preferences-before.plist"
-ELEVATE=()
-[[ -w /Applications ]] || ELEVATE=(sudo)
 STAGE="/Applications/.vRemote-9451-stage-${BACKUP:t}.app"
 [[ ! -e "$STAGE" ]] || { print -u2 'Staging path already exists'; exit 1; }
-"${ELEVATE[@]}" ditto "$SOURCE" "$STAGE"
-codesign --verify --deep --strict "$STAGE"
-"${ELEVATE[@]}" mv "$TARGET" "$BACKUP/Previous-installed.app"
-if ! "${ELEVATE[@]}" mv "$STAGE" "$TARGET"; then
-  "${ELEVATE[@]}" mv "$BACKUP/Previous-installed.app" "$TARGET"
-  print -u2 'Replacement failed; previous App restored.'
-  exit 1
-fi
-if ! codesign --verify --deep --strict "$TARGET"; then
-  "${ELEVATE[@]}" mv "$TARGET" "$BACKUP/Failed-replacement.app"
-  "${ELEVATE[@]}" mv "$BACKUP/Previous-installed.app" "$TARGET"
-  print -u2 'Post-swap verification failed; previous App restored.'
-  exit 1
-fi
+# /Applications can be writable while a root-owned installed bundle still
+# rejects rename. Authorize the complete staged swap through macOS, not sudo
+# on a noninteractive terminal. Every elevated path is confined to these Apps.
+/usr/bin/osascript - "$SOURCE" "$STAGE" "$TARGET" "$BACKUP/Previous-installed.app" "$BACKUP/Failed-replacement.app" <<'APPLESCRIPT'
+on run argv
+    set sourcePath to quoted form of item 1 of argv
+    set stagePath to quoted form of item 2 of argv
+    set targetPath to quoted form of item 3 of argv
+    set previousPath to quoted form of item 4 of argv
+    set failedPath to quoted form of item 5 of argv
+    set swapCommand to "set -e; /usr/bin/ditto " & sourcePath & " " & stagePath
+    set swapCommand to swapCommand & "; /usr/bin/codesign --verify --deep --strict " & stagePath
+    set swapCommand to swapCommand & "; /bin/mv " & targetPath & " " & previousPath
+    set swapCommand to swapCommand & "; if /bin/mv " & stagePath & " " & targetPath & "; then "
+    set swapCommand to swapCommand & "if /usr/bin/codesign --verify --deep --strict " & targetPath & "; then :; else "
+    set swapCommand to swapCommand & "/bin/mv " & targetPath & " " & failedPath & "; /bin/mv " & previousPath & " " & targetPath & "; exit 1; fi; "
+    set swapCommand to swapCommand & "else /bin/mv " & previousPath & " " & targetPath & "; exit 1; fi"
+    do shell script swapCommand with administrator privileges
+end run
+APPLESCRIPT
+codesign --verify --deep --strict "$TARGET"
 print -r -- "$SOURCE" > "$BACKUP/Installed-source.txt"
 print "Installed App only. Backup: $BACKUP"
 print "Rollback after approval: scripts/swap-reviewed-app.sh --approved '$BACKUP/vRemote.app'"

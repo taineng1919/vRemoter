@@ -30,7 +30,11 @@ test. Current hardware findings are in `ACCEPTANCE-9451.md`.
    preference plist for reference. It stages the reviewed source, verifies it,
    retains the original installed bundle and swaps the App into
    `/Applications/vRemote.app`. It does not start the App automatically.
-   Administrative authorization is used only if `/Applications` is not writable.
+   macOS administrator authorization is used for the staged replacement.
+   A writable `/Applications` directory is not sufficient to rename every
+   root-owned installed App. If old resources are root-only readable, a scoped
+   administrator-authorized copy is also used; ownership is adjusted only on
+   the user's backup, never on the installed source.
 
 3. Launch `/Applications/vRemote.app` normally, without test environment variables.
    Existing application data and preferences are retained. In the console select
