@@ -509,9 +509,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             statusText = L10n.text("豆包输入设备错误", "Incorrect Doubao input")
         } else if remoteStreaming {
             statusText = L10n.text("遥控器录音中", "Remote recording")
-        } else if anyHID && anyBLE {
+        } else if anyBLE {
             statusText = L10n.text("已就绪", "Ready")
-        } else if anyHID || anyBLE {
+        } else if anyHID {
             statusText = L10n.text("正在连接语音服务", "Connecting voice service")
         } else {
             statusText = L10n.text("等待遥控器", "Waiting for remote")

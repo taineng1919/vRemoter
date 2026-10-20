@@ -14,5 +14,5 @@ SWIFTC=(swiftc -module-cache-path "$PWD/.build/module-cache")
 .local/tests/preferences
 ./run-self-tests.sh
 # Production session state machine is exercised by the complete debug binary.
-APP_BIN="${1:-$PWD/dist/development/vRemote9451.app/Contents/MacOS/vRemote}"
+APP_BIN="${1:-$PWD/dist/debug/vRemote9451.app/Contents/MacOS/vRemote}"
 "$APP_BIN" --voice-session-self-test

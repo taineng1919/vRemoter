@@ -4,6 +4,7 @@ import Foundation
 /// profile keeps all preferences in its workspace without touching that domain.
 final class AppPreferences {
     private let file: URL?
+    private let lock = NSLock()
     private var values: [String: Any] = [:]
     private var registered: [String: Any] = [:]
 
@@ -18,22 +19,32 @@ final class AppPreferences {
     }
 
     func register(defaults: [String: Any]) {
+        lock.lock()
+        defer { lock.unlock() }
         if file == nil { UserDefaults.standard.register(defaults: defaults) }
         else { registered.merge(defaults) { _, new in new } }
     }
 
     func object(forKey key: String) -> Any? {
+        lock.lock()
+        defer { lock.unlock() }
         if file == nil { return UserDefaults.standard.object(forKey: key) }
         return values[key] ?? registered[key]
     }
 
     func bool(forKey key: String) -> Bool {
-        (object(forKey: key) as? NSNumber)?.boolValue ?? false
+        if file == nil { return UserDefaults.standard.bool(forKey: key) }
+        return (object(forKey: key) as? NSNumber)?.boolValue ?? false
     }
-    func string(forKey key: String) -> String? { object(forKey: key) as? String }
+    func string(forKey key: String) -> String? {
+        if file == nil { return UserDefaults.standard.string(forKey: key) }
+        return object(forKey: key) as? String
+    }
     func data(forKey key: String) -> Data? { object(forKey: key) as? Data }
 
     func set(_ value: Any?, forKey key: String) {
+        lock.lock()
+        defer { lock.unlock() }
         guard let file else { UserDefaults.standard.set(value, forKey: key); return }
         values[key] = value
         do {

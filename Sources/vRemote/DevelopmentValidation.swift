@@ -56,6 +56,10 @@ final class DevelopmentValidation: NSObject, NSTextViewDelegate {
         guard let command = try? String(contentsOf: file, encoding: .utf8) else { return }
         try? FileManager.default.removeItem(at: file)
         switch command.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "focus":
+            window.makeKeyAndOrderFront(nil)
+            window.makeFirstResponder(textView)
+            NSApp.activate(ignoringOtherApps: true)
         case "snapshot": print("[ACCEPTANCE] SNAPSHOT \(snapshot())")
         case "stop": stop()
         case "quit": NSApp.terminate(nil)
