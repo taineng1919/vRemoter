@@ -63,7 +63,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         savedUUIDFilename: "chromecast-remote-uuid.txt",
         recordingPrefix: "chromecast-remote-voice",
         logTag: "CAST-BLE",
-        resetSessionOnConnect: true
+        resetSessionOnConnect: true,
+        alternateNameHints: ["Google TV Remote"],
+        deviceIdentity: .googleVoiceRemote
     )
 
     func applicationDidFinishLaunching(_ notification: Notification) {

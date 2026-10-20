@@ -17,3 +17,9 @@ Driver/build/
 uuid.txt
 x6-uuid.txt
 Recordings/
+
+# Independent development builds and private hardware acceptance artifacts.
+.build-*/
+.local/
+Validation/Results/
+Validation/Cache/

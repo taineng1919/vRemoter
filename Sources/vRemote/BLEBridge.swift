@@ -20,6 +20,10 @@ final class BLEBridge: NSObject {
 
     // This V2 bridge owns one X6 ATVV connection.
     private let nameHint: String?
+    private let alternateNameHints: [String]
+    private let deviceIdentity: BLERemoteIdentity?
+    private var identityVerified = false
+    private var capabilitiesRequested = false
     private let savedUUIDPath: String
     private let recordingPrefix: String
     private let logTag: String
@@ -27,9 +31,9 @@ final class BLEBridge: NSObject {
 
     /// Where we persist a previously-discovered peripheral UUID so the next
     /// launch can attempt `retrievePeripherals` directly without scanning.
-    private static let appSupportDirectory = NSString(
-        string: "~/Library/Application Support/vRemote"
-    ).expandingTildeInPath
+    private static var appSupportDirectory: String {
+        AppStorage.applicationSupportDirectory.path
+    }
 
     /// Called whenever the bridge produces or stops producing audio (true = streaming).
     var onStreamingChanged: ((Bool, Int /* sampleRate */) -> Void)?
@@ -83,9 +87,13 @@ final class BLEBridge: NSObject {
         savedUUIDFilename: String,
         recordingPrefix: String,
         logTag: String,
-        resetSessionOnConnect: Bool
+        resetSessionOnConnect: Bool,
+        alternateNameHints: [String] = [],
+        deviceIdentity: BLERemoteIdentity? = nil
     ) {
         self.nameHint = nameHint
+        self.alternateNameHints = alternateNameHints
+        self.deviceIdentity = deviceIdentity
         self.savedUUIDPath = URL(
             fileURLWithPath: Self.appSupportDirectory
         ).appendingPathComponent(savedUUIDFilename).path
@@ -107,6 +115,9 @@ final class BLEBridge: NSObject {
 
     func stop() {
         isStarted = false
+        central.stopScan()
+        connectTimeout?.cancel()
+        connectTimeout = nil
         closeTimeoutWorkItem?.cancel()
         closeTimeoutWorkItem = nil
         stopKeepAliveTimer()
@@ -141,7 +152,7 @@ final class BLEBridge: NSObject {
         bypassDebounce: Bool = false
     ) -> RemoteMicrophoneOpenResult {
         guard !isStreaming else { return .alreadyStreaming }
-        guard peripheral != nil, commandChar != nil else {
+        guard peripheral?.state == .connected, commandChar != nil else {
             print("[\(logTag)] micOpen waiting for writable characteristic")
             return .retryAfter(0.15)
         }
@@ -224,7 +235,9 @@ final class BLEBridge: NSObject {
         // UUID. This makes same-model replacement remotes work without
         // manually deleting x6-uuid.txt from the previous unit.
         let connected = central.retrieveConnectedPeripherals(
-            withServices: [Self.serviceUUID]
+            withServices: deviceIdentity == nil
+                ? [Self.serviceUUID]
+                : [Self.serviceUUID, CBUUID(string: "1812")]
         )
         if let candidate = connected.first(where: matches) {
             print(
@@ -258,6 +271,7 @@ final class BLEBridge: NSObject {
     }
 
     private func beginScan() {
+        guard isStarted, central.state == .poweredOn else { return }
         print("[\(logTag)] 扫描中（按名字 \(nameHint ?? "?") + ATVV service 过滤）")
         central.scanForPeripherals(
             withServices: nil,
@@ -280,20 +294,27 @@ final class BLEBridge: NSObject {
         to p: CBPeripheral,
         allowTimeoutFallback: Bool = false
     ) {
-        guard matches(p) else { return }
+        guard isStarted, matches(p) else { return }
         connectTimeout?.cancel()
         peripheral = p
+        identityVerified = false
+        capabilitiesRequested = false
+        audioChar = nil
+        commandChar = nil
+        controlChar = nil
+        atvvCharsComplete = false
         connectedPeripheralID = nil
         p.delegate = self
         central.stopScan()
         central.connect(p, options: nil)
-        saveUUID(p.identifier)
+        if deviceIdentity == nil { saveUUID(p.identifier) }
         print("[\(logTag)] 连接 \(p.name ?? "(no name)") (\(p.identifier))…")
 
         guard allowTimeoutFallback else { return }
         let id = p.identifier
         let work = DispatchWorkItem { [weak self, weak p] in
-            guard let self, self.connectedPeripheralID != id else { return }
+            guard let self, self.isStarted,
+                  self.connectedPeripheralID != id else { return }
             print("[\(self.logTag)] 已存 UUID 连接超时，改为扫描新设备")
             if let p {
                 self.central.cancelPeripheralConnection(p)
@@ -305,14 +326,19 @@ final class BLEBridge: NSObject {
     }
 
     private func matches(_ candidate: CBPeripheral) -> Bool {
+        if deviceIdentity?.matchingHIDPeripheralIDs().contains(candidate.identifier) == true {
+            return true
+        }
         guard let nameHint else { return true }
-        return candidate.name?.localizedCaseInsensitiveContains(nameHint)
-            == true
+        return ([nameHint] + alternateNameHints).contains {
+            candidate.name?.localizedCaseInsensitiveContains($0) == true
+        }
     }
 
     @discardableResult
     private func writeCommand(_ data: Data) -> Bool {
-        guard let p = peripheral, let c = commandChar else { return false }
+        guard let p = peripheral, p.state == .connected,
+              let c = commandChar else { return false }
         if c.properties.contains(.write) {
             p.writeValue(data, for: c, type: .withResponse)
             return true
@@ -423,6 +449,7 @@ extension BLEBridge: CBCentralManagerDelegate {
                         didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any],
                         rssi RSSI: NSNumber) {
+        guard isStarted else { return }
         let n = peripheral.name ?? "(no name)"
         let services = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? [])
         let hasATVV = services.contains(Self.serviceUUID)
@@ -437,11 +464,16 @@ extension BLEBridge: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        guard isStarted, self.peripheral === peripheral else { return }
         connectTimeout?.cancel()
         connectTimeout = nil
         connectedPeripheralID = peripheral.identifier
         hasResetSessionForConnection = false
         print("[\(logTag)] 已连接")
+        if deviceIdentity != nil {
+            peripheral.discoverServices([CBUUID(string: "180A")])
+            return
+        }
         onConnectionChanged?(true)
         peripheral.discoverServices([Self.serviceUUID])
     }
@@ -449,6 +481,7 @@ extension BLEBridge: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager,
                         didFailToConnect peripheral: CBPeripheral,
                         error: Error?) {
+        guard isStarted, self.peripheral === peripheral else { return }
         connectTimeout?.cancel()
         connectTimeout = nil
         connectedPeripheralID = nil
@@ -460,6 +493,7 @@ extension BLEBridge: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager,
                         didDisconnectPeripheral peripheral: CBPeripheral,
                         error: Error?) {
+        guard isStarted, self.peripheral === peripheral else { return }
         connectTimeout?.cancel()
         connectTimeout = nil
         closeTimeoutWorkItem?.cancel()
@@ -469,7 +503,12 @@ extension BLEBridge: CBCentralManagerDelegate {
         onConnectionChanged?(false)
         finishAudioStreamLocally(reason: 0xFC)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-            self?.beginScan()
+            guard let self, self.isStarted else { return }
+            if self.deviceIdentity != nil {
+                self.tryDirectConnect()
+            } else {
+                self.beginScan()
+            }
         }
     }
 }
@@ -484,6 +523,17 @@ extension BLEBridge: CBPeripheralDelegate {
         }
         print("[\(logTag)] 发现 \(services.count) 个 service")
         for s in services {
+            if deviceIdentity != nil {
+                if !identityVerified {
+                    if s.uuid == CBUUID(string: "180A") {
+                        peripheral.discoverCharacteristics([CBUUID(string: "2A50")], for: s)
+                    }
+                    continue
+                }
+                // The Google voice bridge owns ATVV only, never vendor/HID
+                // subscriptions or any other application's BLE connection.
+                guard s.uuid == Self.serviceUUID else { continue }
+            }
             let tag = s.uuid == Self.serviceUUID ? " ←ATVV" : ""
             print("[\(logTag)]   svc \(s.uuid.uuidString.prefix(8))…\(tag)")
             // Discover ALL characteristics on every service so we can also
@@ -496,6 +546,16 @@ extension BLEBridge: CBPeripheralDelegate {
                     didDiscoverCharacteristicsFor service: CBService,
                     error: Error?) {
         guard error == nil, let chars = service.characteristics else { return }
+        if deviceIdentity != nil, !identityVerified {
+            if let pnp = chars.first(where: { $0.uuid == CBUUID(string: "2A50") }),
+               pnp.properties.contains(.read) {
+                peripheral.readValue(for: pnp)
+            } else {
+                print("[\(logTag)] 身份验证失败: 无可读 PnP ID")
+                central.cancelPeripheralConnection(peripheral)
+            }
+            return
+        }
         for c in chars {
             let props = describeProperties(c.properties)
             let isATVV = service.uuid == Self.serviceUUID
@@ -532,12 +592,28 @@ extension BLEBridge: CBPeripheralDelegate {
                 }
             }
         }
-        if atvvCharsComplete {
+        if atvvCharsComplete, deviceIdentity == nil {
             // All three ATVV chars found: kick off capabilities handshake.
             writeCommand(protocolHandler.getCapabilitiesCommand)
             print("[\(logTag)] TX getCapabilities")
             atvvCharsComplete = false
         }
+    }
+
+    func peripheral(_ peripheral: CBPeripheral,
+                    didUpdateNotificationStateFor characteristic: CBCharacteristic,
+                    error: Error?) {
+        guard deviceIdentity != nil else { return }
+        if let error {
+            print("[\(logTag)] ATVV 订阅失败: \(error.localizedDescription)")
+            return
+        }
+        guard identityVerified, !capabilitiesRequested,
+              commandChar != nil,
+              audioChar?.isNotifying == true,
+              controlChar?.isNotifying == true else { return }
+        capabilitiesRequested = writeCommand(protocolHandler.getCapabilitiesCommand)
+        print("[\(logTag)] ATVV 通知已就绪; TX getCapabilities")
     }
 
     private func describeProperties(_ p: CBCharacteristicProperties) -> String {
@@ -553,6 +629,22 @@ extension BLEBridge: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral,
                     didUpdateValueFor characteristic: CBCharacteristic,
                     error: Error?) {
+        if let deviceIdentity, characteristic.uuid == CBUUID(string: "2A50") {
+            guard error == nil, let data = characteristic.value,
+                  deviceIdentity.matches(pnpID: data) else {
+                print("[\(logTag)] 拒绝不受支持的 PnP ID: \(String(describing: error))")
+                central.cancelPeripheralConnection(peripheral)
+                return
+            }
+            identityVerified = true
+            let bytes = [UInt8](data)
+            let product = Int(bytes[3]) | Int(bytes[4]) << 8
+            print(String(format: "[\(logTag)] PnP 已确认 VID=18D1 PID=%04X", product))
+            saveUUID(peripheral.identifier)
+            onConnectionChanged?(true)
+            peripheral.discoverServices([Self.serviceUUID])
+            return
+        }
         if let error {
             print("[\(logTag)] char update error: \(error.localizedDescription)")
             return
