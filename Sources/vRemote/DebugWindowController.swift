@@ -255,6 +255,7 @@ private final class ConsoleViewModel: ObservableObject {
     @Published var x6Connected = false
     @Published var chromecastConnected = false
     @Published var inputTriggerKey = AppStorage.inputTriggerKey
+    @Published var functionHoldEnabled = AppStorage.functionHoldEnabled
     @Published var activeModal: ConsoleModal?
     @Published var showX6MicHint = !UserDefaults.standard.bool(
         forKey: "vRemoter.hasCompletedX6MicTest"
@@ -278,6 +279,14 @@ private final class ConsoleViewModel: ObservableObject {
         inputTriggerKey = trigger
         AppStorage.inputTriggerKey = trigger
         onInputTriggerChanged?()
+    }
+
+    func setFunctionHoldEnabled(_ enabled: Bool) {
+        guard functionHoldEnabled != enabled else { return }
+        // Close with the previous configuration before changing preferences.
+        onInputTriggerChanged?()
+        functionHoldEnabled = enabled
+        AppStorage.functionHoldEnabled = enabled
     }
 
     func setRemoteMappingEnabled(_ enabled: Bool, remote: SupportedRemoteID) {
@@ -899,12 +908,16 @@ private struct KeyMappingView: View {
                 .frame(width: 158)
                 .disabled(model.remoteStreaming)
                 if model.inputTriggerKey == .function {
-                    Label(
-                        L10n.text("Fn 需在本机测试", "Test Fn on this Mac"),
-                        systemImage: "exclamationmark.triangle.fill"
+                    Toggle(
+                        L10n.text("豆包使用按住 Fn 录音", "Doubao uses hold-to-talk Fn"),
+                        isOn: Binding(
+                            get: { model.functionHoldEnabled },
+                            set: model.setFunctionHoldEnabled
+                        )
                     )
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(ConsoleTheme.amber)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 11))
+                    .disabled(model.remoteStreaming || model.doubaoIsRecording)
                 } else if model.remoteStreaming {
                     Text(L10n.text("录音结束后可修改", "Stop recording to change"))
                         .font(.system(size: 10.5))

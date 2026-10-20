@@ -67,6 +67,7 @@ final class X6SessionCoordinator {
     private let doubaoState: any DoubaoAudioStateProviding
     private let setRemoteRouteActive: (Bool) -> Void
     private let triggerTap: () -> Void
+    private let releaseTrigger: () -> Void
     private let now: () -> Date
 
     private var phase: Phase = .closed
@@ -96,11 +97,13 @@ final class X6SessionCoordinator {
             AudioPipe.shared.setRemoteActive($0)
         },
         triggerTap: @escaping () -> Void = { Key.triggerTap() },
+        releaseTrigger: @escaping () -> Void = {},
         now: @escaping () -> Date = Date.init
     ) {
         self.doubaoState = doubaoState
         self.setRemoteRouteActive = setRemoteRouteActive
         self.triggerTap = triggerTap
+        self.releaseTrigger = releaseTrigger
         self.now = now
     }
 
@@ -316,9 +319,13 @@ final class X6SessionCoordinator {
 
         guard sessionRemote == remote else { return }
         sessionRemote = preferredRemoteProvider?()
-        guard phase == .opening || phase == .open,
-              let replacement = sessionRemote
-        else { return }
+        guard phase == .opening || phase == .open else { return }
+        guard let replacement = sessionRemote else {
+            // A held Fn must not leave the IME recording after the last
+            // voice transport disappears. Toggle shortcuts have no held key.
+            releaseTrigger()
+            return
+        }
         requestRemoteTransportOpen(
             replacement,
             bypassDebounce: false,
@@ -834,6 +841,7 @@ final class X6SessionCoordinator {
     }
 
     private func closeRouteAndTransports() {
+        releaseTrigger()
         let hadTransport =
             !streamingRemotes.isEmpty || openRequestedRemote != nil
         routeActive = false

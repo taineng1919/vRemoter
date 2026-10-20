@@ -46,8 +46,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let chromecastHID = ChromecastRemoteHIDBridge()
     private let x6SearchSuppressor = X6SearchSuppressor()
     private let doubaoAudioState = DoubaoAudioStateMonitor()
+    private let recognitionTrigger = RecognitionTrigger()
     private lazy var x6Session = X6SessionCoordinator(
-        doubaoState: doubaoAudioState
+        doubaoState: doubaoAudioState,
+        triggerTap: { [weak self] in self?.recognitionTrigger.toggle() },
+        releaseTrigger: { [weak self] in self?.recognitionTrigger.release() }
     )
     private let debugWindow = DebugWindowController()
     private let updateWindow = UpdateWindowController()
@@ -745,6 +748,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        recognitionTrigger.release()
         x6.stop()
         chromecastHID.stop()
         x6SearchSuppressor.stop()
@@ -778,5 +782,10 @@ terminationSignal.setEventHandler {
     NSApp.terminate(nil)
 }
 terminationSignal.resume()
+
+signal(SIGINT, SIG_IGN)
+let interruptSignal = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+interruptSignal.setEventHandler { NSApp.terminate(nil) }
+interruptSignal.resume()
 
 app.run()

@@ -86,3 +86,50 @@ enum Key {
         )
     }
 }
+
+/// Translates recognition transitions to the user's existing shortcut.
+/// Fn hold is an application preference; established toggle shortcuts stay intact.
+final class RecognitionTrigger {
+    private let functionIsHold: () -> Bool
+    private let key: () -> InputTriggerKey
+    private let down: (InputTriggerKey) -> Void
+    private let up: (InputTriggerKey) -> Void
+    private let tap: (InputTriggerKey) -> Void
+    private var functionHeld = false
+
+    init(
+        functionIsHold: @escaping () -> Bool = { AppStorage.functionHoldEnabled },
+        key: @escaping () -> InputTriggerKey = { AppStorage.inputTriggerKey },
+        down: @escaping (InputTriggerKey) -> Void = { Key.triggerDown($0) },
+        up: @escaping (InputTriggerKey) -> Void = { Key.triggerUp($0) },
+        tap: @escaping (InputTriggerKey) -> Void = { Key.triggerTap($0) }
+    ) {
+        self.functionIsHold = functionIsHold
+        self.key = key
+        self.down = down
+        self.up = up
+        self.tap = tap
+    }
+
+    func toggle() {
+        // Complete the event pair even if the setting changes mid-session.
+        if functionHeld {
+            release()
+            return
+        }
+        let current = key()
+        guard functionIsHold(), current == .function else {
+            tap(current)
+            return
+        }
+        functionHeld = true
+        down(.function)
+    }
+
+    /// Only releases a synthetic Fn-down issued by this instance.
+    func release() {
+        guard functionHeld else { return }
+        functionHeld = false
+        up(.function)
+    }
+}

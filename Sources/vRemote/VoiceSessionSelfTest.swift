@@ -44,6 +44,7 @@ enum VoiceSessionSelfTest {
         var routeChanges = [Bool]()
         var openRequests = [(VoiceRemoteID, Bool)]()
         var closeRequestCount = 0
+        var triggerReleaseCount = 0
         var openResults = [RemoteMicrophoneOpenResult]()
         var preferredRemote: VoiceRemoteID? = .chromecast
 
@@ -51,11 +52,13 @@ enum VoiceSessionSelfTest {
             doubao = FakeDoubaoState(state: initialState)
             var routeSink: ((Bool) -> Void)?
             var triggerSink: (() -> Void)?
+            var releaseSink: (() -> Void)?
             var nowSink: (() -> Date)?
             coordinator = X6SessionCoordinator(
                 doubaoState: doubao,
                 setRemoteRouteActive: { routeSink?($0) },
                 triggerTap: { triggerSink?() },
+                releaseTrigger: { releaseSink?() },
                 now: { nowSink?() ?? Date(timeIntervalSince1970: 0) }
             )
             routeSink = { [weak self] active in
@@ -64,6 +67,7 @@ enum VoiceSessionSelfTest {
             triggerSink = { [weak self] in
                 self?.triggerTapCount += 1
             }
+            releaseSink = { [weak self] in self?.triggerReleaseCount += 1 }
             nowSink = { [weak self] in
                 self?.clock ?? Date(timeIntervalSince1970: 0)
             }
@@ -133,8 +137,31 @@ enum VoiceSessionSelfTest {
         testChromecastReasonZeroWhileClosedIsIgnored(checks)
         testIndependentRemoteStops(checks)
         testDebouncedRetry(checks)
+        testDisconnectReleasesTrigger(checks)
+        testShutdownReleasesTrigger(checks)
         emit("[SELF-TEST] completed failures=\(checks.failures)")
         return checks.failures == 0
+    }
+
+    private static func testShutdownReleasesTrigger(_ c: CheckContext) {
+        let h = Harness()
+        h.beginChromecastPress()
+        h.doubao.emit(.active)
+        h.coordinator.stop()
+        c.expect(h.triggerReleaseCount == 1, "shutdown releases the synthetic trigger")
+        c.expect(h.coordinator.debugSnapshot.phase == "closed", "shutdown closes recognition")
+        c.expect(h.routeChanges.last == false, "shutdown closes the audio route")
+    }
+
+    private static func testDisconnectReleasesTrigger(_ c: CheckContext) {
+        let h = Harness()
+        h.beginChromecastPress()
+        h.doubao.emit(.active)
+        h.preferredRemote = nil
+        h.coordinator.remoteDisconnected(.chromecast)
+        c.expect(h.triggerReleaseCount == 1, "last voice remote disconnect releases held trigger")
+        h.doubao.emit(.inactive)
+        c.expect(h.coordinator.debugSnapshot.phase == "closed", "IME stop after disconnect closes session")
     }
 
     private static func testActiveBeforeRelease(_ c: CheckContext) {
