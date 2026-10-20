@@ -1,8 +1,9 @@
 # 9451 voice acceptance — 2026-10-21
 
 **Result: the complete independent App passes the scoped voice integration
-gate using the official `vRemoteDr 2ch` channel. The installed App has not been
-replaced. Installation still requires the user's approval.**
+gate using the official `vRemoteDr 2ch` channel. After explicit user approval,
+the reviewed Release App was installed and passed a separate short/hold voice
+smoke test.**
 
 Baseline: upstream `2d906f32b8fc06f98d998b1343d995e7ffed1840`.
 Remote: Google TV Remote, `18D1:9451`, model ZTKA-IR57, firmware 26.5.
@@ -20,8 +21,8 @@ The previous experiment was inventoried and reused, not rewritten.
 - No ATVV protocol, ADPCM decoder, 9450 HID map, X6 HID map or AudioPipe source
   changes. The software's default output remains the official device.
 - Physical testing used the **complete Debug App**, not the earlier replacement
-  harness. The Release App is built and signed but has not received an installed
-  version smoke test. The development-only storage lock and focus command were
+  harness. The Release App subsequently passed the installed-version smoke test
+  recorded below. The development-only storage lock and focus command were
   subsequently verified by rebuilding and rerunning all 61 checks; the voice,
   protocol, decoder and trigger implementation remained identical.
 
@@ -75,14 +76,54 @@ limiting threshold. No Google-specific loudness calibration was added.
 
 The original experiment's 175 inventoried source, test, evidence and binary
 files are unchanged. Hashes of 13 protected installed-App/preference/driver/
-Bluetooth-preference files match their pre-test values. This checks the listed
-files, not every system file or database. No driver, privacy permission, global
-toolchain or installed application was replaced. Test processes were stopped.
+Bluetooth-preference files matched their pre-test values before installation.
+This checks the listed files, not every system file or database. No driver,
+privacy permission or global toolchain was replaced. Independent test processes
+were stopped; after approved installation only the installed App is running.
 
 Raw logs, transcripts, recordings, UUIDs, configuration snapshots and artifact
 hashes remain local under `.local`; they are excluded from Git. This sanitized
 report is the only hardware-evidence summary intended for the fork.
 
-Review [installation and executable rollback](INSTALL-9451.md) before approving
-an App-only replacement. Build and upstream synchronization instructions are
+The [installation and executable rollback](INSTALL-9451.md) procedure preserves
+the existing driver and data. Build and upstream synchronization instructions are
 in [the development guide](GOOGLE-TV-9451.md).
+
+## Approved Release installation and smoke test
+
+The user explicitly approved App-only installation after reviewing the earlier
+results. The original App was completely backed up and verified before swapping
+`/Applications/vRemote.app`. The source binary SHA-256 and installed binary
+SHA-256 both equal:
+
+```text
+b3edb8766212d78272ad08cb8c7bee025001eb5811a5fe177024a8094394c8fa
+```
+
+The original backup binary retains its previously recorded SHA-256. Backup
+locations, old preferences and an executable rollback entry remain private in
+`.local/backups`; they are not uploaded. Installation initially encountered
+root-only readable resources and root-owned App rename restrictions. The
+script now uses scoped macOS administrator authorization for those operations;
+it never changes permissions on the old installed source. No swap occurred
+until a complete verified backup existed. Unused staging files were moved into
+the private backup directory.
+
+The installed App's own preferences now select Fn, Fn hold enabled, remote
+input enabled and Mac input disabled for verified remote-only operation. Existing
+other preferences and application data are retained. No driver, Bluetooth,
+privacy or default-device configuration was changed during installation.
+
+At 03:33:24 the installed process bound the official output and confirmed 9451;
+capability negotiation completed at 03:33:25. At 03:34:21–03:34:25, two physical
+taps (0.117/0.211 s) started and ended recognition. At 03:34:28–03:34:33, a
+4.816-second hold produced 160 frames / 76,800 decoded samples and released Fn
+on the remote stop edge. CoreAudio reported Doubao capturing **vRemoteDr 2ch**
+for both cases and inactive afterward. The TextEdit target saved the actual
+short/hold test sentences, and the user confirmed both passed. A separate
+post-test snapshot also found Doubao inactive.
+
+The final protected-file check found only the three expected changes: the App
+binary, its Info.plist and vRemoter's own preference plist. Driver and Bluetooth
+preference hashes remain unchanged. The installed App is left running for use;
+rollback remains available after quitting it normally.
