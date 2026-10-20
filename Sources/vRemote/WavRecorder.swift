@@ -50,6 +50,12 @@ final class WavRecorder {
         self.rawHandle = rh
     }
 
+    deinit {
+        // A new physical AUDIO_START can replace a host-opened stream before
+        // AUDIO_STOP arrives. Finalize the previous diagnostic WAV as well.
+        close()
+    }
+
     func appendSamples(_ samples: [Int16]) {
         guard let h = wavHandle, !samples.isEmpty else { return }
         var pcm = [UInt8](repeating: 0, count: samples.count * 2)
