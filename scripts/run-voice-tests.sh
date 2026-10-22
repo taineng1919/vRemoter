@@ -12,7 +12,9 @@ SWIFTC=(swiftc -module-cache-path "$PWD/.build/module-cache")
 .local/tests/recorder
 "${SWIFTC[@]}" Sources/vRemote/AppPreferences.swift Tests/Preferences/main.swift -o .local/tests/preferences
 .local/tests/preferences
+"${SWIFTC[@]}" Sources/vRemote/DistributionPolicy.swift Tests/Distribution/main.swift -o .local/tests/distribution
+.local/tests/distribution
 ./run-self-tests.sh
 # Production session state machine is exercised by the complete debug binary.
 APP_BIN="${1:-$PWD/dist/debug/vRemote9451.app/Contents/MacOS/vRemote}"
-"$APP_BIN" --voice-session-self-test
+VREMOTER_DATA_ROOT="$PWD/.local/tests/session-profile" "$APP_BIN" --voice-session-self-test

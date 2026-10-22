@@ -785,6 +785,13 @@ if CommandLine.arguments.contains("--voice-session-self-test") {
 }
 #endif
 
+// A packaged debug candidate must be launched with its isolated data profile.
+// Refuse accidental double-click launches before creating any App controller.
+if Bundle.main.object(forInfoDictionaryKey: "VRRequiresIsolatedProfile") as? Bool == true,
+   AppStorage.developmentDirectory == nil {
+    fputs("Use scripts/launch-development-app.sh to launch the isolated candidate.\n", stderr)
+    exit(EXIT_FAILURE)
+}
 let app = NSApplication.shared
 // Two Apps with the same identity must never race for the remote or Fn.
 if AppStorage.developmentDirectory != nil,
