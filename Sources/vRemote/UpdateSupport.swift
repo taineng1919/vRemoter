@@ -213,6 +213,7 @@ private final class UpdateWindowModel: ObservableObject {
     @Published var dialog: UpdateDialog?
 
     let currentVersion: String
+    let distribution = DistributionPolicy(info: Bundle.main.infoDictionary ?? [:])
     private let service: GitHubUpdateService
     private static let automaticUpdatesKey = "vRemoter.automaticUpdates"
 
@@ -279,6 +280,12 @@ private final class UpdateWindowModel: ObservableObject {
     }
 
     func install(_ release: GitHubRelease) {
+        guard distribution.allowsOfficialInstaller else {
+            // Custom patches must be integrated with upstream before replacing
+            // this App. Checking releases and reading notes remain available.
+            NSWorkspace.shared.open(release.htmlURL)
+            return
+        }
         guard !isDownloading else { return }
         AppAnalytics.signal(
             "Update.installSelected",
@@ -437,6 +444,11 @@ private struct VersionUpdateView: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(UpdateTheme.secondary)
                 .padding(.top, 6)
+            if let patch = model.distribution.patchRevision {
+                Text(L10n.text("定制补丁 \(patch) · 官方更新需先合并验证", "Custom patch \(patch) · integrate upstream before updating"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(UpdateTheme.secondary)
+            }
             Spacer()
             Button {
                 model.checkManually()
@@ -477,6 +489,7 @@ private struct VersionUpdateView: View {
                 UpdateAvailableView(
                     release: release,
                     isDownloading: model.isDownloading,
+                    allowsOfficialInstaller: model.distribution.allowsOfficialInstaller,
                     onLater: { model.dialog = nil },
                     onUpdate: { model.install(release) }
                 )
@@ -509,6 +522,7 @@ private struct UpToDateView: View {
 private struct UpdateAvailableView: View {
     let release: GitHubRelease
     let isDownloading: Bool
+    let allowsOfficialInstaller: Bool
     let onLater: () -> Void
     let onUpdate: () -> Void
 
@@ -534,6 +548,15 @@ private struct UpdateAvailableView: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(UpdateTheme.secondary)
             ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                if !allowsOfficialInstaller {
+                    Text(L10n.text(
+                        "当前为 9451 定制版。请先合并官方更新并验收，再替换 App，以保留遥控器和 Fn 适配。",
+                        "This custom build requires upstream integration and validation before replacing the App to preserve 9451 and Fn support."
+                    ))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(UpdateTheme.green)
+                }
                 Text(release.body?.isEmpty == false
                     ? release.body!
                     : L10n.text("本版本暂无更新说明。", "No release notes were provided."))
@@ -541,7 +564,8 @@ private struct UpdateAvailableView: View {
                     .foregroundStyle(UpdateTheme.text)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
-                    .padding(14)
+                }
+                .padding(14)
             }
             .frame(height: 190)
             .background(UpdateTheme.surface)
@@ -558,7 +582,9 @@ private struct UpdateAvailableView: View {
                         if isDownloading { ProgressView().controlSize(.small) }
                         Text(isDownloading
                             ? L10n.text("正在下载…", "Downloading…")
-                            : L10n.text("立即更新", "Update Now"))
+                            : (allowsOfficialInstaller
+                                ? L10n.text("立即更新", "Update Now")
+                                : L10n.text("查看官方说明", "View Release Notes")))
                     }
                 }
                 .buttonStyle(UpdateButtonStyle(primary: true))

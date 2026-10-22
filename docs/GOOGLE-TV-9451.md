@@ -113,6 +113,21 @@ those devices still require physical checks when available.
 
 ## Installation and rollback
 
+### Ordinary button mappings
+
+9451 voice support does not add HID button mapping. The current
+`ChromecastRemoteHIDBridge` matches only `18D1:9450` and parses report ID `0x01`.
+Saving a Chromecast mapping or enabling its switch does not change that device
+filter. The UI's connected status combines HID and BLE, so a connected 9451
+voice transport is not proof that the ordinary-button path is connected.
+
+For supported hardware, mapping runs independently of voice recognition.
+The direction targets synthesize keyboard arrow events to the focused App;
+they move a text caret or selection as that App interprets them. They do not
+move the mouse pointer. The mapping target list has no mouse movement target.
+9451 button report acquisition/parsing needs separate compatibility work;
+do not solve it by guessing report bytes, resetting pairing or changing TCC.
+
 Do not install until the user reviews actual acceptance results and approves.
 Use the separate [installation/rollback procedure](INSTALL-9451.md). Keep the
 existing HAL driver and application preferences; a full PKG is unnecessary.
