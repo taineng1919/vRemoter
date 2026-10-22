@@ -17,7 +17,7 @@ enum SupportedRemoteID: String, CaseIterable, Identifiable, Codable {
 
     var signature: String {
         switch self {
-        case .chromecast: "18D1 · 9450"
+        case .chromecast: "18D1 · 9450 / 9451"
         case .x6: "1D5A · C081"
         }
     }
@@ -219,6 +219,7 @@ enum RemoteMappingTarget: String, CaseIterable, Identifiable, Codable, Hashable 
                 data1: data1,
                 data2: -1
             )?.cgEvent else { return }
+            event.setIntegerValueField(.eventSourceUserData, value: Key.syntheticMarker)
             event.post(tap: .cghidEventTap)
         }
         post(state: 0xA)

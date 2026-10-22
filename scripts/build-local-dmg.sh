@@ -12,7 +12,7 @@ trap 'rm -rf "$STAGING"' EXIT
 ditto "$APP" "$STAGING/vRemote.app"
 ln -s /Applications "$STAGING/Applications"
 cat > "$STAGING/安装说明.txt" <<'TXT'
-vRemoter 9451 语音适配版（仅 App）
+vRemoter 9451 语音与按键适配版（仅 App）
 
 请先正常退出 vRemoter，并备份 /Applications/vRemote.app，再替换 App。
 此镜像不含驱动、安装脚本或配对配置。保留现有驱动和应用配置。
@@ -20,7 +20,10 @@ vRemoter 9451 语音适配版（仅 App）
 
 修复虚拟音频的闲置输入占用，保留 9451 短按切换、长按松开结束。
 官方更新按钮仅查看说明，升级前须先在定制分支合并和测试。
-本版本没有增加 9451 普通 HID 按键映射，也不提供鼠标指针控制。
+9451 普通按键复用 Chromecast 映射配置，无需开启语音输入。
+支持方向、确认、返回、Home、静音、YouTube、Netflix、音量＋/－。
+方向键用于文本光标/界面选项，不提供鼠标指针控制。
+电源和信源未在本轮验证，不承诺其 HID 映射。
 TXT
 codesign --verify --deep --strict "$STAGING/vRemote.app"
 hdiutil create -volname "vRemoter $VERSION 9451" -srcfolder "$STAGING" \

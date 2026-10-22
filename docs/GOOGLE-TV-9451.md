@@ -2,7 +2,8 @@
 
 This fork adds voice support for Google VID `18D1`, PID `9451`, alongside
 `9450` and X6. It reuses the existing ATVV implementation, ADPCM decoder and
-tap/hold session coordinator. It does not add a 9451 HID button map.
+tap/hold session coordinator. The ordinary-button extension reuses the existing
+Chromecast mapping profile; see [button acceptance](ACCEPTANCE-9451-BUTTONS.md).
 
 ## Changes and configuration
 
@@ -115,18 +116,39 @@ those devices still require physical checks when available.
 
 ### Ordinary button mappings
 
-9451 voice support does not add HID button mapping. The current
-`ChromecastRemoteHIDBridge` matches only `18D1:9450` and parses report ID `0x01`.
-Saving a Chromecast mapping or enabling its switch does not change that device
-filter. The UI's connected status combines HID and BLE, so a connected 9451
-voice transport is not proof that the ordinary-button path is connected.
+9450 and 9451 share the existing Chromecast mapping UI, preference keys and
+mapping IDs. No migration or reset is performed. Enable the Chromecast mapping
+switch; voice input may remain off. Verified 9451 keys are the four directions,
+Select, Back, Home, Mute, YouTube, Netflix and Volume Up/Down. Power/Input were
+not sampled and are not enabled by the 9451 parser. Their existing saved mappings
+remain intact for 9450.
 
-For supported hardware, mapping runs independently of voice recognition.
-The direction targets synthesize keyboard arrow events to the focused App;
-they move a text caret or selection as that App interprets them. They do not
-move the mouse pointer. The mapping target list has no mouse movement target.
-9451 button report acquisition/parsing needs separate compatibility work;
-do not solve it by guessing report bytes, resetting pairing or changing TCC.
+9451 is not wire-compatible with 9450: report 2 contains two consumer-array
+selectors, while report 1 contains six keyboard-array selectors for volume.
+The parser accepts the observed report-ID prefix and exact-length prefix-free
+payloads, tracks each report independently and releases held mappings on stop,
+disable or device removal. 9450 retains its existing report-1 interpretation.
+
+macOS rejects unprivileged exclusive opens of 9451's keyboard interface. A
+separate non-exclusive manager handles 9451; the 9450 manager retains its old
+exclusive behavior. The existing accessibility event tap filters matching native
+volume/mute events within 150 ms of a raw edge, plus native repeat while that
+remote key remains held. Synthetic mapping events are marked and pass through.
+Ordinary keyboard events and unrelated media keys pass. CGEventTap cannot
+identify the source device: an identical media key from another device at the
+same instant can also be filtered. If the existing event tap is unavailable,
+9451 media keys retain native behavior and do not emit a second mapped action;
+no additional permissions, privileged helper or system configuration are added.
+
+The direction targets synthesize keyboard arrows to the focused App, moving a
+text caret or interface selection. They do not move the mouse pointer.
+
+```sh
+scripts/run-button-tests.sh
+```
+
+Only scoped button, trigger and voice-session checks are needed for this change.
+Actual hardware findings and limits are in [button acceptance](ACCEPTANCE-9451-BUTTONS.md).
 
 Do not install until the user reviews actual acceptance results and approves.
 Use the separate [installation/rollback procedure](INSTALL-9451.md). Keep the

@@ -42,7 +42,7 @@ p=sys.argv[1]
 with open(p,'rb') as f: info=plistlib.load(f)
 development=sys.argv[2]=='debug'
 info.update(CFBundleDisplayName='vRemoter 9451 Development' if development else 'vRemoter 9451',
-            VRPatchRevision='9451-audio-isolation-test1' if development else '9451-voice-audio-1',
+            VRPatchRevision='9451-buttons-test1' if development else '9451-voice-buttons-1',
             VRSourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
             VRRequiresIsolatedProfile=development,
             VRTelemetryDeckAppID='',VRCommerceConfigURL='')

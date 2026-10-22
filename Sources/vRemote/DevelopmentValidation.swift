@@ -8,6 +8,7 @@ final class DevelopmentValidation: NSObject, NSTextViewDelegate {
     private var window: NSWindow!
     private var textView: NSTextView!
     private var timer: Timer?
+    private var keyMonitor: Any?
     private let root: URL
     private let snapshot: () -> String
     private let stop: () -> Void
@@ -37,6 +38,16 @@ final class DevelopmentValidation: NSObject, NSTextViewDelegate {
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(textView)
         NSApp.activate(ignoringOtherApps: true)
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) {
+            [weak self] event in
+            guard let self, event.window === self.window else { return event }
+            print("[ACCEPTANCE] KEY code=\(event.keyCode) edge=\(event.type == .keyDown ? "DOWN" : "UP")")
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                print("[ACCEPTANCE] SELECTION \(self.textView.selectedRange())")
+            }
+            return event
+        }
         print("[ACCEPTANCE] Full App profile=\(root.path); \(snapshot())")
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) {
             [weak self] _ in self?.poll()
@@ -67,6 +78,10 @@ final class DevelopmentValidation: NSObject, NSTextViewDelegate {
         }
     }
 
-    func close() { timer?.invalidate(); timer = nil }
+    func close() {
+        timer?.invalidate(); timer = nil
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
+    }
 }
 #endif
