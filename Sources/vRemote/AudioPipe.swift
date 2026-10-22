@@ -451,6 +451,14 @@ final class AudioPipe: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
             return
         }
 
+        // Keep the output engine warm without opening the duplex device's
+        // unused input streams. BLE and voice session lifetime stay unchanged.
+        let inputStatus = OutputOnlyIOProc.disableInput(device: deviceID, ioProc: ioProcID)
+        guard inputStatus == noErr else {
+            AudioDeviceDestroyIOProcID(deviceID, ioProcID)
+            print("[AUDIO] ⚠️ 配置仅输出 IOProc 失败: OSStatus=\(inputStatus)")
+            return
+        }
         let startStatus = AudioDeviceStart(deviceID, ioProcID)
         guard startStatus == noErr else {
             AudioDeviceDestroyIOProcID(deviceID, ioProcID)
