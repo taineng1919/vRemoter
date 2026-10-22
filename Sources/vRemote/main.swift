@@ -292,6 +292,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.updateStatus()
         }
         x6Session.start()
+        x6SearchSuppressor.shouldSuppressRemoteMedia = { [weak self] type, event in
+            self?.chromecastHID.shouldSuppressNativeMedia(type: type, event: event) ?? false
+        }
+        chromecastHID.nativeMediaFilterAvailable = { [weak self] in
+            self?.x6SearchSuppressor.isAvailable ?? false
+        }
         x6SearchSuppressor.start()
         x6.start()
         x6BLE.start()

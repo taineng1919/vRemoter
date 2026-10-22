@@ -13,6 +13,7 @@ final class X6SearchSuppressor {
     private(set) var isAvailable = false
     var onTriggerDownObserved: ((Bool) -> Void)?
     var onTriggerUpObserved: ((Bool) -> Void)?
+    var shouldSuppressRemoteMedia: ((CGEventType, CGEvent) -> Bool)?
     // X6 can deliver the HID report roughly a second before macOS emits the
     // corresponding native Search action. Keep the gate open long enough for
     // that delayed event, while still limiting suppression to the current
@@ -25,7 +26,6 @@ final class X6SearchSuppressor {
             print("[X6-FILTER] accessibility permission unavailable")
             return
         }
-        isAvailable = true
 
         let mask: CGEventMask =
             (1 << CGEventType.keyDown.rawValue) |
@@ -65,6 +65,8 @@ final class X6SearchSuppressor {
                 )
                 return Unmanaged.passRetained(event)
             }
+
+            if suppressor.shouldSuppressRemoteMedia?(type, event) == true { return nil }
 
             let keyCode = event.getIntegerValueField(
                 .keyboardEventKeycode
@@ -113,6 +115,7 @@ final class X6SearchSuppressor {
         }
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+        isAvailable = true
         print("[X6-FILTER] native Search suppression ready")
     }
 
@@ -129,6 +132,7 @@ final class X6SearchSuppressor {
     }
 
     func stop() {
+        isAvailable = false
         armedUntil = .distantPast
         triggerKeysDown.removeAll()
         if let tapPort {

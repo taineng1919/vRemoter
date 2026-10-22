@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import IOKit.hid
 
 private func chromecastRemoteMatched(
@@ -36,13 +37,14 @@ private func chromecastRemoteInputReport(
     report: UnsafeMutablePointer<UInt8>,
     reportLength: CFIndex
 ) {
-    guard let context, result == kIOReturnSuccess, reportLength > 0 else {
+    guard let context, let sender, result == kIOReturnSuccess, reportLength > 0 else {
         return
     }
     Unmanaged<ChromecastRemoteHIDBridge>
         .fromOpaque(context)
         .takeUnretainedValue()
         .handleReport(
+            device: Unmanaged<IOHIDDevice>.fromOpaque(sender).takeUnretainedValue(),
             reportID: reportID,
             data: Data(bytes: report, count: reportLength)
         )
@@ -54,17 +56,22 @@ private func chromecastRemoteInputReport(
 /// voice gestures are therefore handled by the remote's ATVV control stream.
 final class ChromecastRemoteHIDBridge {
     static let vendorID = 0x18D1
-    static let productID = 0x9450
+    static let productIDs = [0x9450, 0x9451]
 
     var onConnectionChanged: ((Bool) -> Void)?
+    var nativeMediaFilterAvailable: () -> Bool = { false }
 
-    private var manager: IOHIDManager?
-    private var activeDevice: IOHIDDevice?
+    private var managers: [IOHIDManager] = []
+    private var nativeMediaGate = ChromecastNativeMediaGate()
+    private var devices: [IOHIDDevice: ChromecastRemoteReportState] = [:]
     private var remappingEnabled = RemoteMappingStore.shared.isEnabled(.chromecast)
-    private var lastButtonID: String?
 
     func start() {
         stop()
+        for productID in Self.productIDs { startManager(productID: productID) }
+    }
+
+    private func startManager(productID: Int) {
         let manager = IOHIDManagerCreate(
             kCFAllocatorDefault,
             IOOptionBits(kIOHIDOptionsTypeNone)
@@ -73,7 +80,7 @@ final class ChromecastRemoteHIDBridge {
             manager,
             [
                 kIOHIDVendorIDKey: Self.vendorID,
-                kIOHIDProductIDKey: Self.productID,
+                kIOHIDProductIDKey: productID,
             ] as CFDictionary
         )
 
@@ -98,11 +105,10 @@ final class ChromecastRemoteHIDBridge {
             CFRunLoopGetMain(),
             CFRunLoopMode.commonModes.rawValue
         )
-        // Open the manager exclusively, not just one IOHIDDevice returned by
-        // the match callback. The remote exposes more than one HID
-        // collection; seizing only the first collection still lets its media
-        // usage reach macOS (for example Select can launch Apple Music).
-        let openOptions = remappingEnabled
+        // Keep 9450's existing exclusive boundary across its collections.
+        // 9451 is a keyboard device: macOS denies non-privileged seize. Its
+        // native media events are filtered through the existing event tap.
+        let openOptions = remappingEnabled && productID == 0x9450
             ? IOOptionBits(kIOHIDOptionsTypeSeizeDevice)
             : IOOptionBits(kIOHIDOptionsTypeNone)
         let result = IOHIDManagerOpen(manager, openOptions)
@@ -118,27 +124,29 @@ final class ChromecastRemoteHIDBridge {
             )
             return
         }
-        self.manager = manager
-        print("[CAST-HID] waiting for Chromecast Remote")
+        managers.append(manager)
+        print(String(format: "[CAST-HID] waiting for PID=0x%04x", productID))
     }
 
     func stop() {
-        activeDevice = nil
-        lastButtonID = nil
+        releaseAllButtons()
+        devices.removeAll()
         onConnectionChanged?(false)
 
-        guard let manager else { return }
-        IOHIDManagerUnscheduleFromRunLoop(
-            manager,
-            CFRunLoopGetMain(),
-            CFRunLoopMode.commonModes.rawValue
-        )
-        IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
-        self.manager = nil
+        for manager in managers {
+            IOHIDManagerUnscheduleFromRunLoop(
+                manager,
+                CFRunLoopGetMain(),
+                CFRunLoopMode.commonModes.rawValue
+            )
+            IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone))
+        }
+        managers.removeAll()
     }
 
     func setRemappingEnabled(_ enabled: Bool) {
         guard remappingEnabled != enabled else { return }
+        releaseAllButtons()
         remappingEnabled = enabled
         start()
     }
@@ -147,45 +155,61 @@ final class ChromecastRemoteHIDBridge {
         result: IOReturn,
         device: IOHIDDevice
     ) {
-        guard result == kIOReturnSuccess, activeDevice == nil else { return }
+        guard result == kIOReturnSuccess, devices[device] == nil,
+              let productID = IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? Int,
+              Self.productIDs.contains(productID) else { return }
         // IOHIDManagerOpen already opened every current and future matching
         // HID collection with the requested access mode.
-        activeDevice = device
+        devices[device] = ChromecastRemoteReportState(productID: productID)
         onConnectionChanged?(true)
         print(
-            "[CAST-HID] connected VID=0x18d1 PID=0x9450 " +
+            String(format: "[CAST-HID] connected VID=0x18d1 PID=0x%04x ", productID) +
             "mode=\(remappingEnabled ? "remap" : "observe")"
         )
     }
 
     fileprivate func deviceDidRemove(_ device: IOHIDDevice) {
-        guard let activeDevice, CFEqual(activeDevice, device) else { return }
-        self.activeDevice = nil
-        onConnectionChanged?(false)
+        guard var state = devices.removeValue(forKey: device) else { return }
+        nativeMediaGate = ChromecastNativeMediaGate()
+        for edge in state.releaseAll() { apply(buttonID: edge.buttonID, isDown: edge.isDown) }
+        onConnectionChanged?(!devices.isEmpty)
         print("[CAST-HID] disconnected")
     }
 
-    fileprivate func handleReport(reportID: UInt32, data: Data) {
-        guard reportID == 0x01 else { return }
-        let payload = data.first == UInt8(truncatingIfNeeded: reportID)
-            ? Data(data.dropFirst())
-            : data
-        guard let usage = payload.first else { return }
-
-        if usage == 0 {
-            guard let buttonID = lastButtonID else { return }
-            lastButtonID = nil
-            apply(buttonID: buttonID, isDown: false)
-            return
+    fileprivate func handleReport(device: IOHIDDevice, reportID: UInt32, data: Data) {
+        guard let edges = devices[device]?.handle(reportID: reportID, data: data) else { return }
+        for edge in edges {
+            if devices[device]?.productID == 0x9451,
+               ["0C", "0D", "08"].contains(edge.buttonID) {
+                // Without the existing event tap, leave native media keys
+                // alone rather than sending a duplicate/custom action.
+                guard remappingEnabled, nativeMediaFilterAvailable() else { continue }
+                nativeMediaGate.arm(buttonID: edge.buttonID, isDown: edge.isDown,
+                                    now: ProcessInfo.processInfo.systemUptime)
+            }
+            apply(buttonID: edge.buttonID, isDown: edge.isDown)
         }
+    }
 
-        let buttonID = String(format: "%02X", usage)
-        guard lastButtonID != buttonID else { return }
-        if let previous = lastButtonID {
-            apply(buttonID: previous, isDown: false)
+    func shouldSuppressNativeMedia(type: CGEventType, event: CGEvent) -> Bool {
+        guard remappingEnabled, type.rawValue == 14,
+              event.getIntegerValueField(.eventSourceUserData) != Key.syntheticMarker,
+              let nsEvent = NSEvent(cgEvent: event), nsEvent.subtype.rawValue == 8
+        else { return false }
+        let suppressed = nativeMediaGate.shouldSuppress(
+            key: (nsEvent.data1 >> 16) & 0xFFFF, isRepeat: nsEvent.data1 & 1 != 0,
+            now: ProcessInfo.processInfo.systemUptime
+        )
+        if suppressed { print("[CAST-HID] suppressed native media data1=\(nsEvent.data1)") }
+        return suppressed
+    }
+
+    private func releaseAllButtons() {
+        nativeMediaGate = ChromecastNativeMediaGate()
+        for device in Array(devices.keys) {
+            guard let edges = devices[device]?.releaseAll() else { continue }
+            for edge in edges { apply(buttonID: edge.buttonID, isDown: edge.isDown) }
         }
-        lastButtonID = buttonID
-        apply(buttonID: buttonID, isDown: true)
     }
 
     private func apply(buttonID: String, isDown: Bool) {
