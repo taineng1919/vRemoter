@@ -11,6 +11,21 @@ actual remote-to-`vRemoteDr 2ch`-to-Doubao output. Inspect the signed release
 artifact and record its SHA-256 and Git commit in the local acceptance report.
 No PKG, HAL-driver installation, TCC modification or Bluetooth repair is needed.
 
+For the reviewed App-only local DMG, use:
+
+```sh
+VREMOTER_SDK=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk \
+  scripts/build-local-dmg.sh
+```
+
+This builds the Release App, gives it a custom patch revision separate from the
+official base version, and packages `vRemote.app` with installation instructions.
+The companion manifest records the source commit and App/DMG SHA-256 values.
+It never installs or launches the App, runs a driver installer or changes settings.
+Use the existing reviewed swap script after approval rather than overwriting the
+installed App without a verified backup. Ordinary Release launches use existing
+preferences; the debug validation window and mandatory isolated profile are absent.
+
 The debug text window is omitted from release. Record separately which binary
 received hardware testing; a successful release build is not itself a hardware
 test. Current hardware findings are in `ACCEPTANCE-9451.md`.
@@ -64,9 +79,10 @@ configuration. The old App ignores the new optional Fn preference. If reverting
 vRemoter's own trigger choice is desired, change it through the App console;
 the script does not overwrite live preferences or call `defaults import`.
 
-The old program does not support 9451 voice, so restoring it intentionally
-returns to that previous capability. The original experimental workspace
-remains available throughout.
+Capabilities after rollback depend on the chosen backup. An original upstream
+App lacks the custom 9451 support; the previously accepted 9451 build retains
+voice support but also its original idle microphone indicator behavior.
+The original experimental workspace remains available throughout.
 
 The user explicitly approved selecting `vRemoteDr 2ch` inside Doubao during
 acceptance. That selection persists independently of replacing or rolling back

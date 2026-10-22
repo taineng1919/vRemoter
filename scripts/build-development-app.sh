@@ -37,12 +37,14 @@ for size in 16 32 128 256 512; do
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/vRemoter.icns"
 python3 - "$APP/Contents/Info.plist" "$CONFIGURATION" <<'PY'
-import plistlib,sys
+import plistlib,subprocess,sys
 p=sys.argv[1]
 with open(p,'rb') as f: info=plistlib.load(f)
-info.update(CFBundleDisplayName='vRemoter 9451 Development',
-            VRPatchRevision='9451-audio-isolation-test1',
-            VRRequiresIsolatedProfile=sys.argv[2]=='debug',
+development=sys.argv[2]=='debug'
+info.update(CFBundleDisplayName='vRemoter 9451 Development' if development else 'vRemoter 9451',
+            VRPatchRevision='9451-audio-isolation-test1' if development else '9451-voice-audio-1',
+            VRSourceCommit=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+            VRRequiresIsolatedProfile=development,
             VRTelemetryDeckAppID='',VRCommerceConfigURL='')
 with open(p,'wb') as f: plistlib.dump(info,f)
 PY
